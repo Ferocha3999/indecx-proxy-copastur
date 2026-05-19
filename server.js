@@ -1,15 +1,3 @@
-const express = require('express');
-const fetch = require('node-fetch');
-const cors = require('cors');
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(cors());
-app.use(express.json());
-app.use(express.static('public'));
-
-// Rota /nps — chamada pelo painel para buscar respostas
 app.get('/nps', async (req, res) => {
   const { startDate, endDate, limit, page } = req.query;
   const companyKey = req.headers['company-key'];
@@ -34,38 +22,21 @@ app.get('/nps', async (req, res) => {
     );
 
     const text = await response.text();
+    
+    // LOG TEMPORARIO — ver nos logs do Render
+    console.log('STATUS INDECX:', response.status);
+    console.log('RESPOSTA INDECX:', text.substring(0, 500));
+
     try {
       res.status(response.status).json(JSON.parse(text));
     } catch {
-      res.status(500).json({ error: 'Indecx retornou resposta invalida', preview: text.substring(0, 300) });
+      res.status(500).json({ 
+        error: 'Indecx retornou resposta invalida', 
+        status: response.status,
+        preview: text.substring(0, 500)  // <-- agora mostra o que veio
+      });
     }
   } catch (err) {
     res.status(500).json({ error: 'Erro no proxy', details: err.message });
   }
 });
-
-// Rota /actions — chamada pelo botão "Ver ações"
-app.get('/actions', async (req, res) => {
-  const companyKey = req.headers['company-key'];
-  if (!companyKey) return res.status(400).json({ error: 'company-key header ausente' });
-
-  try {
-    const response = await fetch('https://indecx.com/v3/integrations/actions', {
-      headers: {
-        'company-integration-key': companyKey,
-        'Content-Type': 'application/json'
-      }
-    });
-
-    const text = await response.text();
-    try {
-      res.status(response.status).json(JSON.parse(text));
-    } catch {
-      res.status(500).json({ error: 'Indecx retornou resposta invalida', preview: text.substring(0, 300) });
-    }
-  } catch (err) {
-    res.status(500).json({ error: 'Erro no proxy', details: err.message });
-  }
-});
-
-app.listen(PORT, () => console.log(`Proxy rodando na porta ${PORT}`));
