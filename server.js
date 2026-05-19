@@ -9,77 +9,78 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Busca TODAS as respostas sem filtro de data
+// Chave e URL fixas
+const COMPANY_KEY = '$2b$10$wTF2lte07JfAAN90W/TksuP8/8Fw7eCRrC.LrHWetMmZXnlhA5B5u';
+const INDECX_URLS = [
+  'https://indecx.com/v3/integrations/get-answers/all',
+  'https://indecx.com/v2/answers-info/all'
+];
+
+const HEADERS = {
+  'company-integration-key': COMPANY_KEY,
+  'company-key': COMPANY_KEY,
+  'Content-Type': 'application/json'
+};
+
 app.get('/nps', async (req, res) => {
-  const companyKey = req.headers['company-key'];
-  if (!companyKey) return res.status(400).json({ error: 'company-key ausente' });
-
-  const { limit, page } = req.query;
-  const params = new URLSearchParams();
-  params.append('limit', limit || '10000');
-  if (page) params.append('page', page);
-
-  const urls = [
-    `https://indecx.com/v3/integrations/get-answers/all?${params}`,
-    `https://indecx.com/v2/answers-info/all?${params}`
-  ];
-
-  for (const url of urls) {
+  for (const baseUrl of INDECX_URLS) {
     try {
-      console.log('GET', url);
-      const response = await fetch(url, {
-        headers: {
-          'company-integration-key': companyKey,
-          'company-key': companyKey,
-          'Content-Type': 'application/json'
+      const firstRes = await fetch(baseUrl + '?limit=1000&page=1', { headers: HEADERS });
+      const firstText = await firstRes.text();
+      console.log('Status:', firstRes.status, '| Preview:', firstText.substring(0, 200));
+
+      if (firstRes.status === 404 || firstRes.status === 401) continue;
+
+      let firstJson;
+      try { firstJson = JSON.parse(firstText); } catch { continue; }
+
+      const total = firstJson.total || 0;
+      let dados = firstJson.answers || firstJson.invites || firstJson.data || firstJson.dados || [];
+      if (!Array.isArray(dados)) dados = [];
+
+      console.log('Total:', total, '| Pag 1:', dados.length);
+
+      const totalPags = Math.ceil(total / 1000);
+      if (totalPags > 1) {
+        const promises = [];
+        for (let p = 2; p <= Math.min(totalPags, 50); p++) {
+          promises.push(
+            fetch(baseUrl + '?limit=1000&page=' + p, { headers: HEADERS })
+              .then(r => r.json())
+              .then(j => j.answers || j.invites || j.data || j.dados || [])
+              .catch(() => [])
+          );
         }
-      });
-      const text = await response.text();
-      console.log('Status:', response.status, '| Preview:', text.substring(0, 300));
-      if (response.status === 404 || response.status === 401) continue;
-      let json;
-      try { json = JSON.parse(text); } catch { continue; }
-      const dados = json.answers || json.invites || json.data || json.dados || [];
-      return res.json({
-        dados: Array.isArray(dados) ? dados : [],
-        total: json.total || dados.length
-      });
+        const pages = await Promise.all(promises);
+        pages.forEach(p => { dados = dados.concat(p); });
+      }
+
+      console.log('Total carregado:', dados.length);
+      return res.json({ dados, total: dados.length });
+
     } catch (err) {
       console.log('Erro:', err.message);
       continue;
     }
   }
 
-  return res.status(500).json({ error: 'Nao foi possivel conectar com a Indecx.' });
+  return res.status(500).json({ error: 'Não foi possível conectar com a Indecx.' });
 });
 
-// Busca lista de campanhas/ações
 app.get('/actions', async (req, res) => {
-  const companyKey = req.headers['company-key'];
-  if (!companyKey) return res.status(400).json({ error: 'company-key ausente' });
-
   const urls = [
     'https://indecx.com/v3/integrations/actions',
     'https://indecx.com/v2/actions'
   ];
-
   for (const url of urls) {
     try {
-      const response = await fetch(url, {
-        headers: {
-          'company-integration-key': companyKey,
-          'company-key': companyKey,
-          'Content-Type': 'application/json'
-        }
-      });
-      const text = await response.text();
-      console.log('Actions status:', response.status, '| Preview:', text.substring(0, 200));
-      if (response.status === 404) continue;
-      try { return res.status(response.status).json(JSON.parse(text)); } catch { continue; }
-    } catch (err) { continue; }
+      const r = await fetch(url, { headers: HEADERS });
+      const text = await r.text();
+      if (r.status === 404) continue;
+      try { return res.status(r.status).json(JSON.parse(text)); } catch { continue; }
+    } catch { continue; }
   }
-
-  return res.status(500).json({ error: 'Nao foi possivel buscar as acoes.' });
+  return res.status(500).json({ error: 'Não foi possível buscar as ações.' });
 });
 
 app.listen(PORT, () => console.log(`Proxy rodando na porta ${PORT}`));
