@@ -9,13 +9,11 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Chave e URL fixas
 const COMPANY_KEY = '$2b$10$wTF2lte07JfAAN90W/TksuP8/8Fw7eCRrC.LrHWetMmZXnlhA5B5u';
 const INDECX_URLS = [
   'https://indecx.com/v3/integrations/get-answers/all',
   'https://indecx.com/v2/answers-info/all'
 ];
-
 const HEADERS = {
   'company-integration-key': COMPANY_KEY,
   'company-key': COMPANY_KEY,
@@ -28,18 +26,13 @@ app.get('/nps', async (req, res) => {
       const firstRes = await fetch(baseUrl + '?limit=1000&page=1', { headers: HEADERS });
       const firstText = await firstRes.text();
       console.log('Status:', firstRes.status, '| Preview:', firstText.substring(0, 200));
-
       if (firstRes.status === 404 || firstRes.status === 401) continue;
-
       let firstJson;
       try { firstJson = JSON.parse(firstText); } catch { continue; }
-
       const total = firstJson.total || 0;
       let dados = firstJson.answers || firstJson.invites || firstJson.data || firstJson.dados || [];
       if (!Array.isArray(dados)) dados = [];
-
       console.log('Total:', total, '| Pag 1:', dados.length);
-
       const totalPags = Math.ceil(total / 1000);
       if (totalPags > 1) {
         const promises = [];
@@ -54,24 +47,18 @@ app.get('/nps', async (req, res) => {
         const pages = await Promise.all(promises);
         pages.forEach(p => { dados = dados.concat(p); });
       }
-
       console.log('Total carregado:', dados.length);
       return res.json({ dados, total: dados.length });
-
     } catch (err) {
       console.log('Erro:', err.message);
       continue;
     }
   }
-
   return res.status(500).json({ error: 'Não foi possível conectar com a Indecx.' });
 });
 
 app.get('/actions', async (req, res) => {
-  const urls = [
-    'https://indecx.com/v3/integrations/actions',
-    'https://indecx.com/v2/actions'
-  ];
+  const urls = ['https://indecx.com/v3/integrations/actions', 'https://indecx.com/v2/actions'];
   for (const url of urls) {
     try {
       const r = await fetch(url, { headers: HEADERS });
